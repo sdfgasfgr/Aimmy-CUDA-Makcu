@@ -24,6 +24,7 @@ namespace MouseMovementLibraries.MakcuSupport
         private ManualResetEventSlim _stopListenerEvent = new ManualResetEventSlim(false);
         private volatile bool _pauseListener = false;
 
+
         private readonly Dictionary<MakcuMouseButton, bool> _buttonStates = new Dictionary<MakcuMouseButton, bool>();
 
         public event Action<MakcuMouseButton, bool> ButtonStateChanged;
