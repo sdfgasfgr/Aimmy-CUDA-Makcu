@@ -1,5 +1,9 @@
 ﻿using Gma.System.MouseKeyHook;
+using System;
+using System.Collections.Generic;
 using System.Windows.Forms;
+using MouseMovementLibraries.MakcuSupport;
+using System.Windows.Threading;
 
 namespace Aimmy2.InputLogic
 {
@@ -11,6 +15,8 @@ namespace Aimmy2.InputLogic
         private string? settingBindingId = null;
 
         public event Action<string, string>? OnBindingSet;
+
+        private const string MakcuButtonPrefix = "Makcu_";
 
         public event Action<string>? OnBindingPressed;
 
@@ -42,24 +48,79 @@ namespace Aimmy2.InputLogic
                 _mEvents.KeyUp += GlobalHookKeyUp!;
                 _mEvents.MouseUp += GlobalHookMouseUp!;
             }
+
+            if (MakcuMain.MakcuInstance != null && MakcuMain.MakcuInstance.IsInitializedAndConnected)
+            {
+                MakcuMain.MakcuInstance.ButtonStateChanged -= MakcuMouseButtonStateChanged;
+                MakcuMain.MakcuInstance.ButtonStateChanged += MakcuMouseButtonStateChanged;
+            }
+
+            SetupMakcuEvents();
+        }
+
+        public void SetupMakcuEvents()
+        {
+            if (MakcuMain.MakcuInstance != null && MakcuMain.MakcuInstance.IsInitializedAndConnected)
+            {
+                MakcuMain.MakcuInstance.ButtonStateChanged -= MakcuMouseButtonStateChanged;
+                MakcuMain.MakcuInstance.ButtonStateChanged += MakcuMouseButtonStateChanged;
+                MouseManager.MoveMouseAction = (x, y) => MakcuMain.MakcuInstance?.Move(x, y);
+                MouseManager.PressMouseAction = (button) =>
+                {
+                    switch (button)
+                    {
+                        case 0: MakcuMain.MakcuInstance?.Press(MakcuMouseButton.Left); break;
+                        case 1: MakcuMain.MakcuInstance?.Press(MakcuMouseButton.Right); break;
+                        case 2: MakcuMain.MakcuInstance?.Press(MakcuMouseButton.Middle); break;
+                    }
+                };
+                MouseManager.ReleaseMouseAction = (button) =>
+                {
+                    switch (button)
+                    {
+                        case 0: MakcuMain.MakcuInstance?.Release(MakcuMouseButton.Left); break;
+                        case 1: MakcuMain.MakcuInstance?.Release(MakcuMouseButton.Right); break;
+                        case 2: MakcuMain.MakcuInstance?.Release(MakcuMouseButton.Middle); break;
+                    }
+                };
+                if (_mEvents != null)
+                {
+                    _mEvents.MouseDown -= GlobalHookMouseDown!;
+                    _mEvents.MouseUp -= GlobalHookMouseUp!;
+                }
+            }
+        }
+
+        public void RestoreMouseEvents()
+        {
+            if (_mEvents != null)
+            {
+                _mEvents.MouseDown -= GlobalHookMouseDown!;
+                _mEvents.MouseUp -= GlobalHookMouseUp!;
+                _mEvents.MouseDown += GlobalHookMouseDown!;
+                _mEvents.MouseUp += GlobalHookMouseUp!;
+            }
         }
 
         private void GlobalHookKeyDown(object sender, KeyEventArgs e)
         {
+            string keyCodeStr = e.KeyCode.ToString();
+
             if (settingBindingId != null)
             {
-                bindings[settingBindingId] = e.KeyCode.ToString();
-                OnBindingSet?.Invoke(settingBindingId, e.KeyCode.ToString());
+                bindings[settingBindingId] = keyCodeStr;
+                isHolding[settingBindingId] = false;
+                OnBindingSet?.Invoke(settingBindingId, keyCodeStr);
                 settingBindingId = null;
             }
             else
             {
-                foreach (var binding in bindings)
+                foreach (var bindingEntry in bindings)
                 {
-                    if (binding.Value == e.KeyCode.ToString())
+                    if (bindingEntry.Value == keyCodeStr)
                     {
-                        isHolding[binding.Key] = true;
-                        OnBindingPressed?.Invoke(binding.Key);
+                        isHolding[bindingEntry.Key] = true;
+                        OnBindingPressed?.Invoke(bindingEntry.Key);
                     }
                 }
             }
@@ -67,20 +128,23 @@ namespace Aimmy2.InputLogic
 
         private void GlobalHookMouseDown(object sender, MouseEventArgs e)
         {
+            string buttonCodeStr = e.Button.ToString();
+
             if (settingBindingId != null)
             {
-                bindings[settingBindingId] = e.Button.ToString();
-                OnBindingSet?.Invoke(settingBindingId, e.Button.ToString());
+                bindings[settingBindingId] = buttonCodeStr;
+                isHolding[settingBindingId] = false;
+                OnBindingSet?.Invoke(settingBindingId, buttonCodeStr);
                 settingBindingId = null;
             }
             else
             {
-                foreach (var binding in bindings)
+                foreach (var bindingEntry in bindings)
                 {
-                    if (binding.Value == e.Button.ToString())
+                    if (bindingEntry.Value == buttonCodeStr)
                     {
-                        isHolding[binding.Key] = true;
-                        OnBindingPressed?.Invoke(binding.Key);
+                        isHolding[bindingEntry.Key] = true;
+                        OnBindingPressed?.Invoke(bindingEntry.Key);
                     }
                 }
             }
@@ -88,24 +152,26 @@ namespace Aimmy2.InputLogic
 
         private void GlobalHookKeyUp(object sender, KeyEventArgs e)
         {
-            foreach (var binding in bindings)
+            string keyCodeStr = e.KeyCode.ToString();
+            foreach (var bindingEntry in bindings)
             {
-                if (binding.Value == e.KeyCode.ToString())
+                if (bindingEntry.Value == keyCodeStr)
                 {
-                    isHolding[binding.Key] = false;
-                    OnBindingReleased?.Invoke(binding.Key);
+                    isHolding[bindingEntry.Key] = false;
+                    OnBindingReleased?.Invoke(bindingEntry.Key);
                 }
             }
         }
 
         private void GlobalHookMouseUp(object sender, MouseEventArgs e)
         {
-            foreach (var binding in bindings)
+            string buttonCodeStr = e.Button.ToString();
+            foreach (var bindingEntry in bindings)
             {
-                if (binding.Value == e.Button.ToString())
+                if (bindingEntry.Value == buttonCodeStr)
                 {
-                    isHolding[binding.Key] = false;
-                    OnBindingReleased?.Invoke(binding.Key);
+                    isHolding[bindingEntry.Key] = false;
+                    OnBindingReleased?.Invoke(bindingEntry.Key);
                 }
             }
         }
@@ -121,6 +187,57 @@ namespace Aimmy2.InputLogic
                 _mEvents.Dispose();
                 _mEvents = null;
             }
+
+            if (MakcuMain.MakcuInstance != null)
+            {
+                try
+                {
+                    MakcuMain.MakcuInstance.ButtonStateChanged -= MakcuMouseButtonStateChanged;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"DEBUG: Error MakcuMouse: {ex.Message}");
+                }
+            }
         }
+
+
+        private void MakcuMouseButtonStateChanged(MakcuMouseButton button, bool isPressed)
+        {
+            string makcuButtonCodeStr = button.ToString();
+
+            if (settingBindingId != null && isPressed)
+            {
+
+                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                {
+                    bindings[settingBindingId] = makcuButtonCodeStr;
+                    isHolding[settingBindingId] = false;
+                    OnBindingSet?.Invoke(settingBindingId, makcuButtonCodeStr);
+                    settingBindingId = null;
+                });
+            }
+            else
+            {
+                foreach (var bindingEntry in bindings)
+                {
+
+                    if (bindingEntry.Value == makcuButtonCodeStr)
+                    {
+                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            isHolding[bindingEntry.Key] = isPressed;
+                            if (isPressed)
+                                OnBindingPressed?.Invoke(bindingEntry.Key);
+                            else
+                                OnBindingReleased?.Invoke(bindingEntry.Key);
+                        });
+
+                    }
+                }
+            }
+        }
+
+
     }
 }

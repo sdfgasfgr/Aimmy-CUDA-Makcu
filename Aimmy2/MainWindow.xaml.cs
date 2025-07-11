@@ -6,6 +6,7 @@ using Aimmy2.Other;
 using Aimmy2.UILibrary;
 using Aimmy2.WinformsReplacement;
 using Microsoft.Win32;
+using MouseMovementLibraries.MakcuSupport;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -285,7 +286,8 @@ namespace Aimmy2
                 "SendInput" => 1,
                 "LG HUB" => 2,
                 "Razer Synapse (Require Razer Peripheral)" => 3,
-                _ => 0 // Default case if none of the above matches
+                "Makcu Support" => 4,
+                _ => -1 // Default case if none of the above matches
             };
             uiManager.D_ExecutionProvider!.DropdownBox.SelectedIndex = Dictionary.dropdownState["Execution Provider Type"] switch
             {
@@ -652,6 +654,7 @@ namespace Aimmy2
 
             AddDropdownItem(uiManager.D_DetectionAreaType, "Closest to Mouse");
 
+
             uiManager.D_AimingBoundariesAlignment = AddDropdown(AimConfig, "Aiming Boundaries Alignment");
 
             AddDropdownItem(uiManager.D_AimingBoundariesAlignment, "Center");
@@ -831,26 +834,47 @@ namespace Aimmy2
             uiManager.AT_SettingsMenu = AddTitle(SettingsConfig, "Settings Menu", true);
 
             uiManager.D_MouseMovementMethod = AddDropdown(SettingsConfig, "Mouse Movement Method");
+
+            // Add dropdown items and store references
+            uiManager.DDI_MAKCU = AddDropdownItem(uiManager.D_MouseMovementMethod, "Makcu Support");
             AddDropdownItem(uiManager.D_MouseMovementMethod, "Mouse Event");
             AddDropdownItem(uiManager.D_MouseMovementMethod, "SendInput");
             uiManager.DDI_LGHUB = AddDropdownItem(uiManager.D_MouseMovementMethod, "LG HUB");
 
+            // LG HUB selection logic
             uiManager.DDI_LGHUB.Selected += (sender, e) =>
             {
+                MakcuMain.Unload();
                 if (!new LGHubMain().Load())
                 {
                     SelectMouseEvent();
                 }
             };
 
+            // Razer Synapse selection logic
             uiManager.DDI_RazerSynapse = AddDropdownItem(uiManager.D_MouseMovementMethod, "Razer Synapse (Requires Razer Peripheral)");
             uiManager.DDI_RazerSynapse.Selected += async (sender, e) =>
             {
+                MakcuMain.Unload();
                 if (!await RZMouse.Load())
                 {
                     SelectMouseEvent();
                 }
             };
+
+            // ✅ Makcu Support logic
+            uiManager.DDI_MAKCU.Selected += async (s, e) =>
+            {
+                if (!await MakcuMain.Load())
+                    bindingManager.SetupMakcuEvents();
+            };
+
+            uiManager.DDI_MAKCU.Unselected += (s, e) =>
+            {
+                MakcuMain.DisposeInstance();
+                bindingManager.RestoreMouseEvents();
+            };
+
 
             uiManager.D_ExecutionProvider = AddDropdown(SettingsConfig, "Execution Provider Type");
             //uiManager.DDI_DirectML = AddDropdownItem(uiManager.D_ExecutionProvider, "DirectML");
@@ -1084,7 +1108,7 @@ namespace Aimmy2
         private async void SelectMouseEvent()
         {
             await Task.Delay(500);
-            uiManager.D_MouseMovementMethod!.DropdownBox.SelectedIndex = 0;
+            uiManager.D_MouseMovementMethod!.DropdownBox.SelectedIndex = -1;
         }
 
 

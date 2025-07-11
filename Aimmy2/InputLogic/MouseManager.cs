@@ -3,6 +3,7 @@ using Aimmy2.MouseMovementLibraries.GHubSupport;
 using Aimmy2.MouseMovementLibraries.RazerSupport;
 using Aimmy2.MouseMovementLibraries.SendInputSupport;
 using Aimmy2.WinformsReplacement;
+using MouseMovementLibraries.MakcuSupport;
 using System.Drawing;
 using System.Runtime.InteropServices;
 
@@ -24,10 +25,62 @@ namespace Aimmy2.InputLogic
         public static double smoothingFactor = 0.5;
         public static bool IsEMASmoothingEnabled = false;
 
+        public static Action<int, int> MoveMouseAction = (x, y) => DefaultMove(x, y);
+        public static Action<int> PressMouseAction = (button) => DefaultPress(button);
+        public static Action<int> ReleaseMouseAction = (button) => DefaultRelease(button);
+
+
         [DllImport("user32.dll")]
         private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, int dwExtraInfo);
 
         private static Random MouseRandom = new();
+
+        private static void DefaultMove(int x, int y)
+        {
+            switch (Dictionary.dropdownState["Mouse Movement Method"])
+            {
+                case "SendInput":
+                    SendInputMouse.SendMouseCommand(MOUSEEVENTF_MOVE, x, y);
+                    break;
+
+                case "LG HUB":
+                    LGMouse.Move(0, x, y, 0);
+                    break;
+
+                case "Razer Synapse (Require Razer Peripheral)":
+                    RZMouse.mouse_move(x, y, true);
+                    break;
+
+                case "Makcu Support":
+                    MakcuMain.MakcuInstance?.Move(x, y);
+                    break;
+
+                default:
+                    mouse_event(MOUSEEVENTF_MOVE, (uint)x, (uint)y, 0, 0);
+                    break;
+            }
+        }
+
+        private static void DefaultPress(int button)
+        {
+            switch (button)
+            {
+                case 0: MakcuMain.MakcuInstance?.Press(MakcuMouseButton.Left); break;
+                case 1: MakcuMain.MakcuInstance?.Press(MakcuMouseButton.Right); break;
+                case 2: MakcuMain.MakcuInstance?.Press(MakcuMouseButton.Middle); break;
+            }
+        }
+
+        private static void DefaultRelease(int button)
+        {
+            switch (button)
+            {
+                case 0: MakcuMain.MakcuInstance?.Release(MakcuMouseButton.Left); break;
+                case 1: MakcuMain.MakcuInstance?.Release(MakcuMouseButton.Right); break;
+                case 2: MakcuMain.MakcuInstance?.Release(MakcuMouseButton.Middle); break;
+            }
+        }
+
 
         private static Point CubicBezier(Point start, Point end, Point control1, Point control2, double t)
         {
@@ -63,38 +116,42 @@ namespace Aimmy2.InputLogic
             }
 
             string mouseMovementMethod = Dictionary.dropdownState["Mouse Movement Method"];
-            Action mouseDownAction, mouseUpAction;
+            Action mouseDownAction;
+            Action mouseUpAction;
 
-            (mouseDownAction, mouseUpAction) = GetMouseActions(mouseMovementMethod);
+            switch (mouseMovementMethod)
+            {
+                case "SendInput":
+                    mouseDownAction = () => SendInputMouse.SendMouseCommand(MOUSEEVENTF_LEFTDOWN);
+                    mouseUpAction = () => SendInputMouse.SendMouseCommand(MOUSEEVENTF_LEFTUP);
+                    break;
+
+                case "LG HUB":
+                    mouseDownAction = () => LGMouse.Move(1, 0, 0, 0);
+                    mouseUpAction = () => LGMouse.Move(0, 0, 0, 0);
+                    break;
+
+                case "Razer Synapse (Require Razer Peripheral)":
+                    mouseDownAction = () => RZMouse.mouse_click(1);
+                    mouseUpAction = () => RZMouse.mouse_click(0);
+                    break;
+
+                case "Makcu Support":
+                    mouseDownAction = () => MakcuMain.MakcuInstance.Press(MakcuMouseButton.Left);
+                    mouseUpAction = () => MakcuMain.MakcuInstance.Release(MakcuMouseButton.Left);
+                    break;
+
+                default:
+                    mouseDownAction = () => mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+                    mouseUpAction = () => mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+                    break;
+            }
 
             mouseDownAction.Invoke();
             await Task.Delay(clickDelayMilliseconds);
             mouseUpAction.Invoke();
 
             LastClickTime = DateTime.UtcNow;
-
-            static (Action, Action) GetMouseActions(string method)
-            {
-                return method switch
-                {
-                    "SendInput" => (
-                        () => SendInputMouse.SendMouseCommand(MOUSEEVENTF_LEFTDOWN),
-                        () => SendInputMouse.SendMouseCommand(MOUSEEVENTF_LEFTUP)
-                    ),
-                    "LG HUB" => (
-                        () => LGMouse.Move(1, 0, 0, 0),
-                        () => LGMouse.Move(0, 0, 0, 0)
-                    ),
-                    "Razer Synapse (Require Razer Peripheral)" => (
-                        () => RZMouse.mouse_click(1),
-                        () => RZMouse.mouse_click(0)
-                    ),
-                    _ => (
-                        () => mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0),
-                        () => mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
-                    )
-                };
-            }
         }
 
         public static void DoAntiRecoil()
@@ -121,6 +178,10 @@ namespace Aimmy2.InputLogic
 
                 case "Razer Synapse (Require Razer Peripheral)":
                     RZMouse.mouse_move(xRecoil, yRecoil, true);
+                    break;
+
+                case "Makcu Support":
+                    MakcuMain.MakcuInstance.Move(xRecoil, yRecoil);
                     break;
 
                 default:
@@ -171,6 +232,10 @@ namespace Aimmy2.InputLogic
 
                 case "Razer Synapse (Require Razer Peripheral)":
                     RZMouse.mouse_move(newPosition.X, newPosition.Y, true);
+                    break;
+
+                case "Makcu Support":
+                    MakcuMain.MakcuInstance.Move(newPosition.X, newPosition.Y);
                     break;
 
                 default:
